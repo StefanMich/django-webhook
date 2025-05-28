@@ -11,6 +11,8 @@ from freezegun import freeze_time
 from pytest_django.asserts import assertNumQueries
 
 from django_webhook.test_factories import (
+    MultiTenantWebhookFactory,
+    TenantFactory,
     WebhookFactory,
     WebhookSecretFactory,
     WebhookTopicFactory,
@@ -18,7 +20,7 @@ from django_webhook.test_factories import (
 from django_webhook.signals import SignalListener
 
 from tests.model_data import TEST_JOIN_DATE, TEST_LAST_ACTIVE, TEST_USER
-from tests.models import Country, User
+from tests.models import Country, User, Tenant, MultiTenantWebhook, FilteredUser
 
 
 pytestmark = pytest.mark.django_db
@@ -233,3 +235,52 @@ def test_signal_listener_uid():
         ).uid
         == "django_webhook_tests.Country_post_delete"
     )
+
+
+def test_filtered_update(responses):
+    tenant_1 = TenantFactory()
+    tenant_2 = TenantFactory()
+
+    user_1 = FilteredUser.objects.create(
+        name="Dani",
+        email="dani@doo.com",
+        join_date=TEST_JOIN_DATE,
+        last_active=TEST_LAST_ACTIVE,
+        tenant=tenant_1,
+    )
+
+    user_2 = FilteredUser.objects.create(
+        name="Ben",
+        email="ben@gmail.com",
+        join_date=TEST_JOIN_DATE,
+        last_active=TEST_LAST_ACTIVE,
+        tenant=tenant_2,
+    )
+
+    webhook_1 = WebhookFactory(
+        topics=[WebhookTopicFactory(name="tests.User/update")],
+    )
+    multitenant_webhook_1 = MultiTenantWebhookFactory()
+
+    webhook_2 = WebhookFactory(
+        topics=[WebhookTopicFactory(name="tests.User/update")],
+    )
+
+    multitenant_webhook_2 = MultiTenantWebhookFactory()
+
+    responses.post(webhook_1.url)
+    responses.post(webhook_2.url)
+
+
+    user_1.name = "Adin"
+    user_1.save()
+    assert len(responses.calls) == 1
+    req = responses.calls[0].request
+    expected_object = TEST_USER.copy()
+    expected_object["name"] = "Adin"
+    assert json.loads(req.body) == {
+        "topic": "tests.User/update",
+        "object": expected_object,
+        "object_type": "tests.User",
+        "webhook_uuid": str(webhook_1.uuid),
+    }

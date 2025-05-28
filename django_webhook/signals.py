@@ -42,7 +42,12 @@ class SignalListener:
                 action_type = DELETE
 
         topic = f"{self.model_label}/{action_type}"
-        webhook_ids = _find_webhooks(topic)
+        webhook_filter = getattr(sender, 'webhook_filter')
+        if webhook_filter:
+            kwargs = webhook_filter(instance)
+        else:
+            kwargs = {}
+        webhook_ids = _find_webhooks(topic, **kwargs)
         encoder_cls = get_settings()["PAYLOAD_ENCODER_CLASS"]
 
         for id, uuid in webhook_ids:
@@ -112,7 +117,7 @@ def _active_models():
     return model_classes
 
 
-def _find_webhooks(topic: str):
+def _find_webhooks(topic: str, **kwargs):
     """
     In tests and for smaller setups we don't want to cache the query.
     """
@@ -122,14 +127,14 @@ def _find_webhooks(topic: str):
 
 
 @cache(ttl=timedelta(minutes=1))
-def _query_webhooks_cached(topic: str):
+def _query_webhooks_cached(topic: str, **kwargs):
     """
     Cache the calls to the database so we're not polling the db anytime a signal is triggered.
     """
-    return _query_webhooks(topic)
+    return _query_webhooks(topic, **kwargs)
 
 
-def _query_webhooks(topic: str):
-    return Webhook.objects.filter(active=True, topics__name=topic).values_list(
+def _query_webhooks(topic: str, **kwargs):
+    return Webhook.objects.filter(active=True, topics__name=topic, **kwargs).values_list(
         "id", "uuid"
     )

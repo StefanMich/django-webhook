@@ -7,6 +7,10 @@ from django_webhook.models import (
     WebhookTopic,
     states,
 )
+from tests.models import (
+    MultiTenantWebhook,
+    Tenant,
+)
 
 
 class WebhookSecretFactory(factory.django.DjangoModelFactory):
@@ -52,3 +56,18 @@ class WebhookEventFactory(factory.django.DjangoModelFactory):
     status = factory.Faker("random_element", elements=states.ALL_STATES)
     url = factory.Faker("url")
     topic = factory.Faker("pystr")
+
+
+class TenantFactory(factory.django.DjangoModelFactory):
+    class Meta:
+        model = Tenant
+
+    name = factory.Faker("name")
+
+
+class MultiTenantWebhookFactory(factory.django.DjangoModelFactory):
+    class Meta:
+        model = MultiTenantWebhook
+
+    tenant = factory.SubFactory(TenantFactory)
+    webhook = factory.SubFactory(WebhookFactory)
